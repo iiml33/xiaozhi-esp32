@@ -262,6 +262,7 @@ void Application::HandleNetworkConnectedEvent() {
     ESP_LOGI(TAG, "Network connected");
     auto state = GetDeviceState();
 
+    // 1. 启动/配网阶段：维持原有激活流程
     if (state == kDeviceStateStarting || state == kDeviceStateWifiConfiguring) {
         // Network is ready, start activation
         SetDeviceState(kDeviceStateActivating);
@@ -276,6 +277,16 @@ void Application::HandleNetworkConnectedEvent() {
             app->activation_task_handle_ = nullptr;
             vTaskDelete(NULL);
         }, "activation", 4096 * 2, this, 2, &activation_task_handle_);
+    } else {
+        // 2. 运行时阶段：如果之前记录了需要恢复监听，并且使用的是 WebSocket 协议，则在网络恢复后自动重新进入监听
+        bool is_websocket = (dynamic_cast<WebsocketProtocol*>(protocol_.get()) != nullptr);
+        if (is_websocket && relisten_after_network_reconnect_) {
+            relisten_after_network_reconnect_ = false;
+            if (listening_mode_ == kListeningModeAutoStop) {
+                ESP_LOGI(TAG, "Network reconnected, restarting listening over websocket...");
+                StartListening();
+            }
+        }
     }
 
     // Update the status bar immediately to show the network state
@@ -288,6 +299,13 @@ void Application::HandleNetworkDisconnectedEvent() {
     auto state = GetDeviceState();
     if (state == kDeviceStateConnecting || state == kDeviceStateListening || state == kDeviceStateSpeaking) {
         ESP_LOGI(TAG, "Closing audio channel due to network disconnection");
+
+        // 标记：当网络恢复时需要自动恢复监听（仅 WebSocket + 自动停止模式）
+        bool is_websocket = (dynamic_cast<WebsocketProtocol*>(protocol_.get()) != nullptr);
+        if (is_websocket && listening_mode_ == kListeningModeAutoStop) {
+            relisten_after_network_reconnect_ = true;
+        }
+
         protocol_->CloseAudioChannel();
     }
 
