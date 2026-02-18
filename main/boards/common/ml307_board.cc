@@ -169,12 +169,23 @@ std::string Ml307Board::GetBoardJson() {
     // Set the board type for OTA
     std::string board_json = std::string("{\"type\":\"" BOARD_TYPE "\",");
     board_json += "\"name\":\"" BOARD_NAME "\",";
-    board_json += "\"revision\":\"" + modem_->GetModuleRevision() + "\",";
-    board_json += "\"carrier\":\"" + modem_->GetCarrierName() + "\",";
-    board_json += "\"csq\":\"" + std::to_string(modem_->GetCsq()) + "\",";
-    board_json += "\"imei\":\"" + modem_->GetImei() + "\",";
-    board_json += "\"iccid\":\"" + modem_->GetIccid() + "\",";
-    board_json += "\"cereg\":" + modem_->GetRegistrationState().ToString() + "}";
+    if (modem_ != nullptr) {
+        board_json += "\"revision\":\"" + modem_->GetModuleRevision() + "\",";
+        // GetCarrierName() may fail if modem is busy or not ready, use try-catch or default value
+        std::string carrier = "unknown";
+        try {
+            carrier = modem_->GetCarrierName();
+        } catch (...) {
+            ESP_LOGW(TAG, "Failed to get carrier name, using default");
+        }
+        board_json += "\"carrier\":\"" + carrier + "\",";
+        board_json += "\"csq\":\"" + std::to_string(modem_->GetCsq()) + "\",";
+        board_json += "\"imei\":\"" + modem_->GetImei() + "\",";
+        board_json += "\"iccid\":\"" + modem_->GetIccid() + "\",";
+        board_json += "\"cereg\":" + modem_->GetRegistrationState().ToString() + "}";
+    } else {
+        board_json += "\"status\":\"offline\"}";
+    }
     return board_json;
 }
 
@@ -247,18 +258,30 @@ std::string Ml307Board::GetDeviceStatusJson() {
     // Network
     auto network = cJSON_CreateObject();
     cJSON_AddStringToObject(network, "type", "cellular");
-    cJSON_AddStringToObject(network, "carrier", modem_->GetCarrierName().c_str());
-    int csq = modem_->GetCsq();
-    if (csq == -1) {
+    if (modem_ != nullptr) {
+        // GetCarrierName() may fail if modem is busy or not ready, use try-catch or default value
+        std::string carrier = "unknown";
+        try {
+            carrier = modem_->GetCarrierName();
+        } catch (...) {
+            ESP_LOGW(TAG, "Failed to get carrier name, using default");
+        }
+        cJSON_AddStringToObject(network, "carrier", carrier.c_str());
+        int csq = modem_->GetCsq();
+        if (csq == -1) {
+            cJSON_AddStringToObject(network, "signal", "unknown");
+        } else if (csq >= 0 && csq <= 14) {
+            cJSON_AddStringToObject(network, "signal", "very weak");
+        } else if (csq >= 15 && csq <= 19) {
+            cJSON_AddStringToObject(network, "signal", "weak");
+        } else if (csq >= 20 && csq <= 24) {
+            cJSON_AddStringToObject(network, "signal", "medium");
+        } else if (csq >= 25 && csq <= 31) {
+            cJSON_AddStringToObject(network, "signal", "strong");
+        }
+    } else {
+        cJSON_AddStringToObject(network, "carrier", "unknown");
         cJSON_AddStringToObject(network, "signal", "unknown");
-    } else if (csq >= 0 && csq <= 14) {
-        cJSON_AddStringToObject(network, "signal", "very weak");
-    } else if (csq >= 15 && csq <= 19) {
-        cJSON_AddStringToObject(network, "signal", "weak");
-    } else if (csq >= 20 && csq <= 24) {
-        cJSON_AddStringToObject(network, "signal", "medium");
-    } else if (csq >= 25 && csq <= 31) {
-        cJSON_AddStringToObject(network, "signal", "strong");
     }
     cJSON_AddItemToObject(root, "network", network);
 

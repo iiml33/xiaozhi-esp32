@@ -30,6 +30,7 @@ bool WebsocketProtocol::SendAudio(std::unique_ptr<AudioStreamPacket> packet) {
         return false;
     }
 
+    bool send_result = false;
     if (version_ == 2) {
         std::string serialized;
         serialized.resize(sizeof(BinaryProtocol2) + packet->payload.size());
@@ -41,7 +42,7 @@ bool WebsocketProtocol::SendAudio(std::unique_ptr<AudioStreamPacket> packet) {
         bp2->payload_size = htonl(packet->payload.size());
         memcpy(bp2->payload, packet->payload.data(), packet->payload.size());
 
-        return websocket_->Send(serialized.data(), serialized.size(), true);
+        send_result = websocket_->Send(serialized.data(), serialized.size(), true);
     } else if (version_ == 3) {
         std::string serialized;
         serialized.resize(sizeof(BinaryProtocol3) + packet->payload.size());
@@ -51,10 +52,37 @@ bool WebsocketProtocol::SendAudio(std::unique_ptr<AudioStreamPacket> packet) {
         bp3->payload_size = htons(packet->payload.size());
         memcpy(bp3->payload, packet->payload.data(), packet->payload.size());
 
-        return websocket_->Send(serialized.data(), serialized.size(), true);
+        send_result = websocket_->Send(serialized.data(), serialized.size(), true);
     } else {
-        return websocket_->Send(packet->payload.data(), packet->payload.size(), true);
+        send_result = websocket_->Send(packet->payload.data(), packet->payload.size(), true);
     }
+
+    // Check if send failed and connection is still valid
+    if (!send_result) {
+        size_t data_size = 0;
+        if (version_ == 2) {
+            data_size = sizeof(BinaryProtocol2) + packet->payload.size();
+        } else if (version_ == 3) {
+            data_size = sizeof(BinaryProtocol3) + packet->payload.size();
+        } else {
+            data_size = packet->payload.size();
+        }
+        
+        // Check if connection is still alive
+        if (websocket_ == nullptr || !websocket_->IsConnected()) {
+            ESP_LOGW(TAG, "Websocket connection lost during audio send (packet size: %zu bytes)", data_size);
+            // Connection is already lost, OnDisconnected callback will handle it
+        } else {
+            int error_code = websocket_->GetLastError();
+            ESP_LOGW(TAG, "Failed to send audio data (packet size: %zu bytes, error: %d), but connection still alive", 
+                     data_size, error_code);
+            // Connection is alive but send failed, might be temporary network issue
+            // Set error flag to trigger reconnection on next attempt
+            error_occurred_ = true;
+        }
+    }
+
+    return send_result;
 }
 
 bool WebsocketProtocol::SendText(const std::string& text) {

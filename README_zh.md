@@ -112,6 +112,163 @@ v1 的稳定版本为 1.9.2，可以通过 `git checkout v1` 来切换到 v1 版
 
 👉 [新手烧录固件教程](https://ccnphfhqs21z.feishu.cn/wiki/Zpz4wXBtdimBrLk25WdcXzxcnNS)
 
+### ESP-IDF 环境下烧录 ESP32-S3 完整流程
+
+#### 一、环境准备
+
+**方法一：使用 ESP-IDF 插件（推荐，最简单）**
+
+1. **安装 ESP-IDF 插件**
+   - 在 Cursor/VSCode 中打开扩展市场（`Ctrl+Shift+X`）
+   - 搜索并安装 "Espressif IDF" 插件
+
+2. **配置插件**
+   - 按 `F1`，输入 `ESP-IDF: Configure ESP-IDF extension`
+   - 选择 "Express" 自动安装，或选择 "Use existing setup" 使用已有安装
+   - 选择芯片支持：ESP32, ESP32-S3, ESP32-C3, ESP32-P4
+   - 等待安装完成（约 10-30 分钟）
+
+**方法二：使用 ESP-IDF 安装器**
+
+1. 下载 [ESP-IDF 安装器](https://www.espressif.com/en/support/download/other-tools)
+2. 运行 `esp-idf-tools-setup-online.exe`
+3. 选择安装路径，选择 ESP-IDF 版本 **v5.4 或更高**
+4. 安装完成后使用 ESP-IDF 命令提示符快捷方式
+
+**方法三：手动安装**
+
+1. 安装 Python 3.8+（勾选 "Add Python to PATH"）
+2. 安装 Git
+3. 克隆 ESP-IDF：
+   ```powershell
+   git clone --recursive https://github.com/espressif/esp-idf.git -b v5.4
+   ```
+4. 安装工具链：
+   ```powershell
+   cd esp-idf
+   .\install.bat esp32,esp32s3,esp32c3,esp32p4
+   ```
+5. 每次使用前运行环境脚本：
+   ```powershell
+   .\export.ps1  # PowerShell
+   # 或
+   .\export.bat  # CMD
+   ```
+
+#### 二、项目配置
+
+1. **设置目标芯片**
+   ```powershell
+   cd D:\AIprojects\xiaozhi-esp32
+   idf.py set-target esp32s3
+   ```
+
+2. **打开配置菜单**
+   - 使用插件：按 `F1` → `ESP-IDF: SDK Configuration editor (menuconfig)`
+   - 或使用终端：`idf.py menuconfig`
+
+3. **配置项目参数**
+   - 导航到 `Xiaozhi Assistant` → `Board Type`，选择你的开发板
+   - 配置 `Partition Table` → `Custom partition CSV file`（如 `partitions/v2/8m.csv`）
+   - 配置 `Serial flasher config` → `Flash size`（根据你的 Flash 大小选择）
+   - 如需配置 OTA URL：`Xiaozhi Assistant` → `Default OTA URL`
+   - 按 `S` 保存，按 `Q` 退出
+
+#### 三、编译项目
+
+```powershell
+idf.py build
+```
+
+或使用插件：按 `F1` → `ESP-IDF: Build your project`
+
+#### 四、烧录固件
+
+1. **连接设备**
+   - 将 ESP32-S3 通过 USB 连接到电脑
+   - 安装 USB 转串口驱动（如 CH340、CP2102 等）
+   - 查看设备管理器确认串口号（如 COM3）
+
+2. **进入下载模式**
+   - 不同开发板进入下载模式的方法不同：
+     - 部分开发板：按住 BOOT 键，再按一下 RESET 键，松开 RESET，再松开 BOOT
+     - M5Stack CoreS3：长按复位按键约 3 秒，直至内部指示灯亮绿色
+     - AtomEchoS3R：按住侧面 RESET 按键，直到 RESET 按键下方绿灯闪烁
+
+3. **执行烧录**
+   ```powershell
+   idf.py -p COM3 flash
+   ```
+   （将 `COM3` 替换为你的实际串口号）
+
+   或使用插件：按 `F1` → `ESP-IDF: Flash your project`
+
+4. **查看串口输出**
+   ```powershell
+   idf.py -p COM3 monitor
+   ```
+   或使用插件：按 `F1` → `ESP-IDF: Monitor your device`
+
+#### 五、一键编译烧录（部分开发板支持）
+
+某些开发板支持一键编译烧录：
+
+```powershell
+# 例如：M5Stack CoreS3
+python scripts/release.py m5stack-core-s3
+
+# 然后烧录
+idf.py flash
+```
+
+#### 六、常见问题
+
+- **找不到串口**：检查设备管理器，安装 USB 转串口驱动
+- **烧录失败**：确保设备已进入下载模式，检查串口号是否正确
+- **编译失败**：运行 `idf.py doctor` 检查环境，确保已设置目标芯片
+- **PowerShell 执行策略错误**：以管理员身份运行 `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- **menuconfig 编码错误（UnicodeDecodeError: 'gbk' codec can't decode）**：
+  
+  这是 Windows 系统上常见的编码问题。解决方法：
+  
+  **方法一：删除 sdkconfig 文件重新生成（推荐）**
+  ```powershell
+  # 删除损坏的配置文件
+  del sdkconfig
+  # 重新设置目标芯片，会自动生成新的 sdkconfig
+  idf.py set-target esp32s3
+  # 再次打开 menuconfig
+  idf.py menuconfig
+  ```
+  
+  **方法二：设置环境变量强制使用 UTF-8**
+  ```powershell
+  # 在运行 menuconfig 前设置环境变量
+  $env:PYTHONIOENCODING="utf-8"
+  idf.py menuconfig
+  ```
+  
+  **方法三：将 sdkconfig 转换为 UTF-8 编码**
+  ```powershell
+  # 使用 PowerShell 读取并重新保存为 UTF-8
+  $content = Get-Content sdkconfig -Raw -Encoding Default
+  [System.IO.File]::WriteAllText("$PWD\sdkconfig", $content, [System.Text.Encoding]::UTF8)
+  ```
+  
+  如果问题仍然存在，建议删除 `sdkconfig` 和 `build` 目录，然后重新配置：
+  ```powershell
+  del sdkconfig
+  rmdir /s /q build
+  idf.py set-target esp32s3
+  idf.py menuconfig
+  ```
+
+#### 七、参考文档
+
+- [Windows 上配置 ESP-IDF 开发环境](docs/setup_idf_windows.md)
+- [在 Cursor 中使用 ESP-IDF 插件](docs/setup_cursor_esp_idf.md)
+- [ESP-IDF 官方文档](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/)
+
 ### 开发环境
 
 - Cursor 或 VSCode

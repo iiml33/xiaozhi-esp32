@@ -1,0 +1,4 @@
+key,type,encoding,value
+wifi,namespace,,
+ota_url,data,string,https://api.tenclass.net/xiaozhi/ota/
+
