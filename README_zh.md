@@ -197,7 +197,7 @@ idf.py build
 
 3. **执行烧录**
    ```powershell
-   idf.py -p COM3 flash
+   idf.py -p COM4 flash
    ```
    （将 `COM3` 替换为你的实际串口号）
 
@@ -205,7 +205,7 @@ idf.py build
 
 4. **查看串口输出**
    ```powershell
-   idf.py -p COM3 monitor
+   idf.py -p COM4 monitor
    ```
    或使用插件：按 `F1` → `ESP-IDF: Monitor your device`
 

@@ -512,27 +512,25 @@ void Application::InitializeProtocol() {
     protocol_->OnAudioChannelClosed([this, &board]() {
         board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
 
-        // 记录当前状态和协议类型，用于区分是正常关闭还是网络异常导致的断开
-        auto current_state = GetDeviceState();
-        bool is_websocket = (dynamic_cast<WebsocketProtocol*>(protocol_.get()) != nullptr);
-
-        Schedule([this, current_state, is_websocket]() {
+        Schedule([this]() {
             auto display = Board::GetInstance().GetDisplay();
             display->SetChatMessage("system", "");
 
-            // 对于 WebSocket 协议，如果是在 listening 状态下被动断开，视为网络抖动，自动重连并回到 listening
-            if (is_websocket && current_state == kDeviceStateListening) {
-                ESP_LOGI(TAG, "Websocket audio channel closed while listening, auto reconnecting...");
-                // 进入连接状态，然后继续打开音频通道
-                if (SetDeviceState(kDeviceStateConnecting)) {
-                    ContinueOpenAudioChannel(GetDefaultListeningMode());
-                } else {
-                    // 状态机拒绝切换时，退回 idle 避免卡死
-                    SetDeviceState(kDeviceStateIdle);
-                }
-            } else {
-                // 其它情况（包括主动停止/说话结束等），保持原有行为：回到 idle
-                SetDeviceState(kDeviceStateIdle);
+            // 统一先回到 idle
+            auto state = GetDeviceState();
+            bool is_websocket = (dynamic_cast<WebsocketProtocol*>(protocol_.get()) != nullptr);
+
+            // 默认行为：回到 idle
+            SetDeviceState(kDeviceStateIdle);
+
+            // 对于 WebSocket，在自动模式下如果是在 listening / speaking 期间被动断开，视为网络抖动，自动重新进入监听
+            if (is_websocket &&
+                listening_mode_ == kListeningModeAutoStop &&
+                (state == kDeviceStateListening || state == kDeviceStateSpeaking)) {
+
+                ESP_LOGI(TAG, "Websocket audio channel closed in state %d, auto restarting listening...", (int)state);
+                // 通过事件驱动的方式重新开始监听，避免直接操作状态机导致非法迁移
+                StartListening();
             }
         });
     });
