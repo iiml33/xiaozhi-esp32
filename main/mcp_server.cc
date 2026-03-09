@@ -81,7 +81,7 @@ void McpServer::AddCommonTools() {
     auto display = board.GetDisplay();
     if (display && display->GetTheme() != nullptr) {
         AddTool("self.screen.set_theme",
-            "Set the theme of the screen. The theme can be `light` or `dark`.",
+            "设置屏幕主题。当用户要求切换深色/浅色、黑底/白底、暗色模式时使用。theme 可选值: `light`(浅色/白底), `dark`(深色/黑底)。Set the theme of the screen. The theme can be `light` or `dark`.",
             PropertyList({
                 Property("theme", kPropertyTypeString)
             }),
