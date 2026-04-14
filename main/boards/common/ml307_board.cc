@@ -100,6 +100,20 @@ void Ml307Board::NetworkTask() {
     // Notify network registration started
     OnNetworkEvent(NetworkEvent::Connecting);
 
+    // ICCID lives on the SIM; show on screen without waiting for network registration.
+    // ShowNotification is after Connecting so Application::SetStatus("等待网络") does not immediately hide it.
+    {
+        std::string iccid_early = modem_->GetIccid();
+        ESP_LOGI(TAG, "ML307 ICCID: %s", iccid_early.c_str());
+        if (auto* disp = GetDisplay()) {
+            if (!iccid_early.empty()) {
+                std::string msg = "ICCID\n";
+                msg += iccid_early;
+                disp->ShowNotification(msg, 60000);
+            }
+        }
+    }
+
     // Wait for network ready with retry limit
     int reg_retries = 0;
     while (reg_retries < NETWORK_REG_MAX_RETRIES) {
